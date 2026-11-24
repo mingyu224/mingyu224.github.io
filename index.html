@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mingyu의 사진 갤러리</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      max-width: 900px;
+      margin: 40px auto;
+      padding: 0 20px;
+      font-family: Arial, sans-serif;
+      background: #f5f5f5;
+      color: #222;
+    }
+
+    h1 {
+      margin-bottom: 10px;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 24px 0 16px;
+    }
+
+    button {
+      padding: 10px 16px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      background: white;
+      color: #222;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #eee;
+    }
+
+    button:focus-visible,
+    input:focus-visible {
+      outline: 3px solid #2874c7;
+      outline-offset: 3px;
+    }
+
+    .upload-box {
+      margin-bottom: 20px;
+    }
+
+    input {
+      max-width: 100%;
+      margin-top: 8px;
+    }
+
+    .notice {
+      color: #555;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    #gallery {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 20px;
+    }
+
+    .card {
+      padding: 12px;
+      background: white;
+      border-radius: 10px;
+    }
+
+    .card img {
+      display: block;
+      width: 100%;
+      height: 220px;
+      object-fit: contain;
+      background: #eee;
+    }
+
+    /* 보정 모드에서는 모든 사진을 흑백으로 표시 */
+    #gallery.edited img {
+      filter: grayscale(100%);
+    }
+
+    .card h2 {
+      margin: 12px 0 6px;
+      font-size: 18px;
+      overflow-wrap: anywhere;
+    }
+
+    .card p {
+      margin: 0;
+      color: #666;
+      font-size: 14px;
+    }
+
+    footer {
+      margin-top: 30px;
+      padding-bottom: 20px;
+      color: #666;
+      font-size: 14px;
+    }
+
+    @media (max-width: 480px) {
+      body {
+        margin-top: 24px;
+      }
+
+      #gallery {
+        grid-template-columns: 1fr;
+      }
+
+      .controls button {
+        flex: 1 1 auto;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <header>
+    <h1>Mingyu의 사진 갤러리</h1>
+    <p>마음에 드는 사진을 모으고, 정렬하고, 흑백으로 감상하는 공간입니다.</p>
+  </header>
+
+  <main>
+    <div class="controls">
+      <button type="button" id="dateButton">최신순</button>
+      <button type="button" id="titleButton">제목 A–Z</button>
+      <button type="button" id="editButton" aria-pressed="false">
+        흑백 보정 보기
+      </button>
+    </div>
+
+    <div class="upload-box">
+      <label for="upload">내 사진으로 체험하기</label>
+      <br>
+      <input type="file" id="upload" accept="image/*" multiple>
+      <p class="notice">
+        선택한 사진은 현재 화면에만 추가됩니다.
+        서버에 저장되지 않으며 새로고침하면 사라집니다.
+        추가한 사진의 날짜는 파일의 마지막 수정일을 사용합니다.
+      </p>
+    </div>
+
+    <p id="status" role="status"></p>
+    <div id="gallery"></div>
+  </main>
+
+  <footer>
+    <p>정렬 알고리즘: Merge Sort / 보정 효과: Grayscale</p>
+    <p>사진 출처는 README.md에 기록합니다.</p>
+  </footer>
+
+  <script>
+    // 아래 날짜는 예시입니다. 원하는 날짜로 수정하세요.
+    let photos = [
+      {
+        title: "Forest",
+        src: "assets/forest.jpg",
+        date: "2026-03-10"
+      },
+      {
+        title: "Beach",
+        src: "assets/beach.jpg",
+        date: "2026-08-20"
+      },
+      {
+        title: "City",
+        src: "assets/city.jpg",
+        date: "2026-05-15"
+      }
+    ];
+
+    let isEdited = false;
+    let currentSort = null;
+
+    const temporaryUrls = [];
+    const gallery = document.getElementById("gallery");
+    const status = document.getElementById("status");
+    const editButton = document.getElementById("editButton");
+
+    // 사진 목록 표시
+    function renderPhotos() {
+      gallery.innerHTML = "";
+      gallery.classList.toggle("edited", isEdited);
+
+      for (const photo of photos) {
+        const card = document.createElement("article");
+        card.className = "card";
+
+        const image = document.createElement("img");
+        image.src = photo.src;
+        image.alt = photo.title;
+
+        const title = document.createElement("h2");
+        title.textContent = photo.title;
+
+        const date = document.createElement("p");
+        date.textContent = "날짜: " + photo.date;
+
+        card.append(image, title, date);
+        gallery.appendChild(card);
+      }
+
+      const orderLabel =
+        currentSort === "date" ? "최신순" :
+        currentSort === "title" ? "제목순" : "기본 순서";
+
+      status.textContent =
+        photos.length + "장의 사진 / " +
+        orderLabel + " / " +
+        (isEdited ? "보정: 흑백" : "원본");
+    }
+
+    // 비교 함수를 받아 사용하는 병합 정렬
+    function mergeSort(items, compare) {
+      if (items.length <= 1) {
+        return items.slice();
+      }
+
+      const middle = Math.floor(items.length / 2);
+      const left = mergeSort(items.slice(0, middle), compare);
+      const right = mergeSort(items.slice(middle), compare);
+
+      const result = [];
+      let i = 0;
+      let j = 0;
+
+      while (i < left.length && j < right.length) {
+        if (compare(left[i], right[j]) <= 0) {
+          result.push(left[i]);
+          i++;
+        } else {
+          result.push(right[j]);
+          j++;
+        }
+      }
+
+      return result.concat(left.slice(i), right.slice(j));
+    }
+
+    // 제목 오름차순 비교
+    function compareTitle(a, b) {
+      return a.title.localeCompare(b.title, "ko", {
+        numeric: true,
+        sensitivity: "base"
+      });
+    }
+
+    // 날짜 내림차순 비교
+    // 날짜를 YYYY-MM-DD 형식으로 통일했으므로 문자열로 비교 가능
+    function compareDate(a, b) {
+      return b.date.localeCompare(a.date);
+    }
+
+    function applyCurrentSort() {
+      if (currentSort === "title") {
+        photos = mergeSort(photos, compareTitle);
+      } else if (currentSort === "date") {
+        photos = mergeSort(photos, compareDate);
+      }
+    }
+
+    // 최신순 버튼 -> 병합 정렬
+    document.getElementById("dateButton").addEventListener("click", () => {
+      currentSort = "date";
+      applyCurrentSort();
+      renderPhotos();
+    });
+
+    // 제목순 버튼 -> 병합 정렬
+    document.getElementById("titleButton").addEventListener("click", () => {
+      currentSort = "title";
+      applyCurrentSort();
+      renderPhotos();
+    });
+
+    // 원본 / 흑백 보정 전환
+    editButton.addEventListener("click", () => {
+      isEdited = !isEdited;
+
+      editButton.textContent =
+        isEdited ? "원본 보기" : "흑백 보정 보기";
+
+      editButton.setAttribute("aria-pressed", String(isEdited));
+      renderPhotos();
+    });
+
+    function formatLocalDate(timestamp) {
+      const date = new Date(timestamp);
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+
+      return year + "-" + month + "-" + day;
+    }
+
+    // 기기에서 선택한 사진을 현재 화면에 추가
+    document.getElementById("upload").addEventListener("change", (event) => {
+      const files = Array.from(event.target.files);
+      let skipped = 0;
+
+      for (const file of files) {
+        if (!file.type.startsWith("image/")) {
+          skipped++;
+          continue;
+        }
+
+        // 너무 큰 파일은 제외: 파일당 최대 10MB
+        if (file.size > 10 * 1024 * 1024) {
+          skipped++;
+          continue;
+        }
+
+        const url = URL.createObjectURL(file);
+        temporaryUrls.push(url);
+
+        photos.push({
+          title: file.name.replace(/\.[^.]+$/, ""),
+          src: url,
+          date: formatLocalDate(file.lastModified)
+        });
+      }
+
+      applyCurrentSort();
+      renderPhotos();
+      event.target.value = "";
+
+      if (skipped > 0) {
+        alert("이미지가 아니거나 10MB를 초과한 파일은 제외했습니다.");
+      }
+    });
+
+    // 페이지를 떠날 때 임시 이미지 주소 해제
+    window.addEventListener("beforeunload", () => {
+      for (const url of temporaryUrls) {
+        URL.revokeObjectURL(url);
+      }
+    });
+
+    renderPhotos();
+          // 비교용 버블 정렬
+    function bubbleSort(items, compare) {
+      const result = items.slice();
+
+      for (let end = result.length - 1; end > 0; end--) {
+        let swapped = false;
+
+        for (let i = 0; i < end; i++) {
+          if (compare(result[i], result[i + 1]) > 0) {
+            const temp = result[i];
+            result[i] = result[i + 1];
+            result[i + 1] = temp;
+            swapped = true;
+          }
+        }
+
+        if (!swapped) break;
+      }
+
+      return result;
+    }
+
+    // 항상 같은 테스트 데이터를 만들기 위한 난수 함수
+    function makeTestPhotos(count) {
+      let seed = 12345;
+
+      function random() {
+        seed = (seed * 16807) % 2147483647;
+        return seed / 2147483647;
+      }
+
+      return Array.from({ length: count }, () => ({
+        title: "Photo " + Math.floor(random() * 1000000),
+        date: "2026-01-01"
+      }));
+    }
+
+    function isSorted(items, compare) {
+      for (let i = 1; i < items.length; i++) {
+        if (compare(items[i - 1], items[i]) > 0) {
+          return false;
+        }
+      }
+
+      return true;
+    }
+
+    // 개발자 도구에서 runPerformanceTest()로 실행
+    function runPerformanceTest() {
+      const sizes = [100, 1000, 3000];
+      const repeats = 5;
+      const results = [];
+
+      // 초기 실행에 따른 영향을 조금 줄이기 위한 준비 실행
+      const warmup = makeTestPhotos(100);
+      mergeSort(warmup, compareTitle);
+      bubbleSort(warmup, compareTitle);
+
+      for (const count of sizes) {
+        const data = makeTestPhotos(count);
+        let mergeTotal = 0;
+        let bubbleTotal = 0;
+        let correct = true;
+
+        for (let trial = 0; trial < repeats; trial++) {
+          let mergeResult;
+          let bubbleResult;
+
+          // 실행 순서를 번갈아 바꿔서 비교
+          const order = trial % 2 === 0
+            ? ["merge", "bubble"]
+            : ["bubble", "merge"];
+
+          for (const algorithm of order) {
+            const start = performance.now();
+
+            if (algorithm === "merge") {
+              mergeResult = mergeSort(data, compareTitle);
+              mergeTotal += performance.now() - start;
+            } else {
+              bubbleResult = bubbleSort(data, compareTitle);
+              bubbleTotal += performance.now() - start;
+            }
+          }
+
+          // 시간 측정이 끝난 뒤 결과가 맞는지도 검사
+          correct = correct
+            && isSorted(mergeResult, compareTitle)
+            && isSorted(bubbleResult, compareTitle)
+            && mergeResult.length === data.length
+            && bubbleResult.length === data.length
+            && mergeResult.every(
+              (photo, index) => photo === bubbleResult[index]
+            );
+        }
+
+        results.push({
+          "데이터 개수": count,
+          "병합 정렬 평균(ms)": (mergeTotal / repeats).toFixed(3),
+          "버블 정렬 평균(ms)": (bubbleTotal / repeats).toFixed(3),
+          "결과 일치": correct ? "통과" : "실패"
+        });
+      }
+
+      console.table(results);
+      return results;
+    }
+
+  </script>
+</body>
+</html>
